@@ -11,27 +11,60 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build:
-    name: Build APK and AAB
+    name: Build Debug APK, Release APK, and Release AAB
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout project
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 21 with Gradle cache
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
+          cache: gradle
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Show project structure
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Root files:"
+          ls -la
+          echo "Workflow files:"
+          ls -la .github/workflows || true
+          echo "Gradle wrapper:"
+          ls -la gradle/wrapper || true
 
-      - name: Make Gradle executable
+      - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
+
+      - name: Verify Gradle project files
+        run: |
+          if [ ! -f "./gradlew" ]; then
+            echo "gradlew not found in repo root"
+            exit 1
+          fi
+
+          if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
+            echo "settings.gradle or settings.gradle.kts not found in repo root"
+            exit 1
+          fi
+
+          if [ ! -d "app" ]; then
+            echo "app folder not found in repo root"
+            exit 1
+          fi
+
+          echo "Gradle Android project structure looks OK"
+
+      - name: Print Gradle version
+        run: ./gradlew --version --no-daemon
 
       - name: Clean project
         run: ./gradlew clean --no-daemon --stacktrace
@@ -45,23 +78,31 @@ jobs:
       - name: Build Release AAB
         run: ./gradlew bundleRelease --no-daemon --stacktrace
 
+      - name: List generated outputs
+        if: always()
+        run: |
+          echo "APK outputs:"
+          find app/build/outputs/apk -type f || true
+          echo "AAB outputs:"
+          find app/build/outputs/bundle -type f || true
+
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: ScanMate-AI-Pro-Debug-APK
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: ScanMate-AI-Pro-Release-APK
           path: app/build/outputs/apk/release/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload Release AAB
         uses: actions/upload-artifact@v4
         with:
           name: ScanMate-AI-Pro-Release-AAB
           path: app/build/outputs/bundle/release/*.aab
-          if-no-files-found: warn
+          if-no-files-found: error
